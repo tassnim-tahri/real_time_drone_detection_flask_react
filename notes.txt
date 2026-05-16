@@ -1,0 +1,145 @@
+to clone from github => git clone github_url
+
+import { useState } from "react";
+import {analyzeVideo} from "../../services/aiServices";
+export default function Analyse() {
+  const [file, setFile] = useState(null);
+  const [preview, setPreview] = useState(null);
+  const [report, setReport] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [summary, setSummary] = useState("");
+  const handleFile = (f) => {
+    setFile(f);
+    setReport("");
+
+    if (f && f.type.startsWith("video/")) {
+      setPreview(URL.createObjectURL(f));
+    }
+  };
+
+  const analyze = async () => {
+    if (!file) return;
+    console.log("Analyzing file:", file.type, file.size);
+    setLoading(true);
+    setReport("");
+
+    try {
+    
+      const data = await analyzeVideo(file);
+
+      if (data.success) {
+        setReport(data.report);
+        setSummary(data.summary);
+      } else {
+        alert(data.error || "Analysis failed");
+      }
+
+    } catch (err) {
+      console.error(err);
+      alert("Error connecting to AI service");
+    }
+
+    setLoading(false);
+  };
+
+
+  const RenderValue = ({ data }) => {
+    if (data === null || data === undefined) {
+      return <span className="text-gray-400">null</span>;
+    }
+
+    if (typeof data !== "object") {
+      return <span className="text-blue-400">{String(data)}</span>;
+    }
+
+    if (Array.isArray(data)) {
+      return (
+        <ul className="ml-4 list-disc space-y-1">
+          {data.map((item, index) => (
+            <li key={index}>
+              <RenderValue data={item} />
+            </li>
+          ))}
+        </ul>
+      );
+    }
+
+    return (
+      <div className="ml-3 border-l border-gray-700 pl-2 space-y-1">
+        {Object.entries(data).map(([key, value]) => (
+          <details key={key} className="group">
+            <summary className="cursor-pointer font-semibold text-sm leading-tight">
+              {key}
+            </summary>
+
+            <div className="ml-2 mt-1">
+              <RenderValue data={value} />
+            </div>
+          </details>
+        ))}
+      </div>
+    );
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 to-indigo-950 text-white " style={{height : "fit-content"}}>
+
+      <h1 className="text-5xl font-black text-center mb-10">
+        Drone Threat Analysis
+      </h1>
+
+      {/* Upload */}
+      <div className="bg-white/5 rounded-2xl border border-white/10 mb-6">
+        <input
+          type="file"
+          accept="video/*"
+          onChange={(e) => handleFile(e.target.files[0])}
+        />
+
+        {preview && (
+          <video
+            src={preview}
+            controls
+            className="mt-4 rounded-xl max-h-96"
+          />
+        )}
+
+        <button
+          onClick={analyze}
+          className="mt-4 bg-indigo-600 py-3 rounded-xl font-bold hover:bg-indigo-500"
+        >
+          Analyze Video
+        </button>
+
+        {/* Loading */}
+        {loading && (
+          <div className="text-center text-lg">
+            ⏳ Running AI pipeline... this may take a while
+          </div>
+        )}
+
+        {/* Report */}
+        {report && (
+          <div className="bg-indigo-900 p-3 rounded-xl text-sm">
+            <details className="mb-2">
+              <summary className="cursor-pointer font-semibold text-base">Quick Summary</summary>
+              <RenderValue data={report} />
+            </details>
+          </div>
+        )}
+        
+        {/* Summary */}
+        {summary && (
+          <div className="bg-indigo-700 p-6 rounded-xl mt-4">
+            <h2 className="text-xl font-bold mb-3">Summary</h2>
+            <p>{summary}</p>
+          </div>
+        )}
+
+
+
+
+      </div>
+    </div>
+  );
+}

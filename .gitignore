@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Node
+node_modules/
+
+# React
+build/
+
+# Outputs
+outputs/
+*.mp4
+*.jpg
+*.png
+*.pt
+
+# VSCode
+.vscode/
+
+# Environment variables
+.env

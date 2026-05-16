@@ -1,0 +1,16 @@
+pip install -r requirements.txt
+python app.py
+
+
+
+C:\Users\LENOVO\AppData\Local\Programs\Python\Python311\python.exe app.py 
+
+
+PS C:\Users\LENOVO> netstat -ano | findstr :3000
+PS C:\Users\LENOVO> tasklist | findstr 23908
+PS C:\Users\LENOVO> taskkill /PID 23908 /F
+
+
+curl -X POST http://localhost:8000/analyze_video \ -F "file=@drone_video.mp4"
+
+
