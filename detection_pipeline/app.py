@@ -1064,10 +1064,10 @@ def fallback_final_report(report: dict[str, Any]) -> str:
 
 def build_langchain_chain(llm_provider: str, llm_model: str, groq_api_key: Optional[str]) -> Any:
     provider = llm_provider.lower()
-
+    print(provider , llm_model)
     if provider == "none" or llm_model.lower() == "none":
         return None
-
+    print("huuu")
     prompt = ChatPromptTemplate.from_template(
         """
 You are a drone detection and threat-assessment assistant.
@@ -1086,13 +1086,16 @@ Answer with concise, factual details.
 
     if provider == "ollama":
         if ChatOllama is None:
+            print("hiiiii ollama")
             return None
         llm = ChatOllama(
             model=llm_model,
             temperature=0.2
         )
+        print("LLM ollama" , llm)
     elif provider == "groq":
         if ChatGroq is None:
+            print("hiiiii groq")
             return None
 
         if groq_api_key:
@@ -1102,6 +1105,7 @@ Answer with concise, factual details.
             return None
 
         llm = ChatGroq(model=llm_model, temperature=0)
+        print("LLm groq" , llm)
     else:
         return None
 
@@ -1306,9 +1310,9 @@ def run_full_pipeline(video_path,  threshold_confidence =0.35 , top_K = 12 , llm
         raise FileNotFoundError(f"Video not found: {video_path}")
 
     
-    if args.llm_provider == "groq":
+    if args.llm_provider.lower() == "groq":
         llm_model = "llama-3.3-70b-versatile"
-    elif args.llm_provider == "ollama":
+    elif args.llm_provider.lower() == "ollama":
         llm_model = "deepseek-r1:1.5b"
     else:
         llm_model = "none"
