@@ -3,12 +3,14 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+env/
 
-# Node
+# Node - only ignore node_modules, NOT the app itself
 node_modules/
 
-# React
+# React - only ignore build output
 build/
+dist/
 
 # Outputs
 outputs/
@@ -20,5 +22,13 @@ outputs/
 # VSCode
 .vscode/
 
-# Environment variables
+# Environment variables (keep .env.example instead)
 .env
+.env.local
+
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+*.swp
