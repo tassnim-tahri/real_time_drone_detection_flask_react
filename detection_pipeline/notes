@@ -1,7 +1,9 @@
 pip install -r requirements.txt
 python app.py
 
-
+git add -A
+git commit -m "Refactor code and update documentation"
+git push origin main
 
 C:\Users\LENOVO\AppData\Local\Programs\Python\Python311\python.exe app.py 
 

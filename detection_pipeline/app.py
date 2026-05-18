@@ -1071,8 +1071,9 @@ def build_langchain_chain(llm_provider: str, llm_model: str, groq_api_key: Optio
     prompt = ChatPromptTemplate.from_template(
         """
 You are a drone detection and threat-assessment assistant.
+the model can detect other objects such as  birds , airplane and helicopters ,check the class before answering , they are not types of drones but other objects , drone is one class
 Use ONLY the report context below to answer.
-If the answer is not in the report, say you do not have enough data.
+If the answer is not in the report, say so .
 
 Report context:
 {report}
@@ -1309,14 +1310,15 @@ def run_full_pipeline(video_path,  threshold_confidence =0.35 , top_K = 12 , llm
     if not video_path.exists():
         raise FileNotFoundError(f"Video not found: {video_path}")
 
-    
+    print ("llm provider : ",args.llm_provider)
     if args.llm_provider.lower() == "groq":
+        print("hiiii from groq")
         llm_model = "llama-3.3-70b-versatile"
     elif args.llm_provider.lower() == "ollama":
         llm_model = "deepseek-r1:1.5b"
     else:
         llm_model = "none"
-
+    print("llm model  : ", llm_model)
     print(f"Loading model: {weights_source}")
     model = YOLO(weights_source)
 

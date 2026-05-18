@@ -181,7 +181,7 @@ def analyze_video():
         global chain
         global reportText
         result,chain = run_full_pipeline(input_path,conf,top_K,llmProvider)
-        reportText = result["report_text"]
+        reportText = result["raw_report"]
         
         return jsonify({
             "success": True,
