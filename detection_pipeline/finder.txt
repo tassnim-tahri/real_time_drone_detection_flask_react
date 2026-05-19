@@ -48,3 +48,5 @@
         action="store_true",
         help="Run inference and report generation only, without interactive chat.",
     )
+
+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
