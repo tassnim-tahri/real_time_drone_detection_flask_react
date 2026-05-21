@@ -1339,7 +1339,7 @@ def fallback_final_report(report: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def build_langchain_chain(llm_provider: str, llm_model: str, groq_api_key: os.getenv("GROQ_API_KEY")) -> Any:
+def build_langchain_chain(llm_provider: str, llm_model: str, groq_api_key: os.getenv("GROQ_API_KEY")) -> Any: # type: ignore
     provider = llm_provider.lower()
     print(provider , llm_model)
     if provider == "none" or llm_model.lower() == "none":
@@ -1601,7 +1601,7 @@ def run_full_pipeline(
 
     print(f"llm provider: {args.llm_provider}")
     if args.llm_provider.lower() == "groq":
-        args.groq_api_key = os.getenv("GROQ_API_KEY")
+        args.groq_api_key = os.getenv("GROQ_API_KEY") # type: ignore
         llm_model = "llama-3.1-8b-instant"
     elif args.llm_provider.lower() == "ollama":
         llm_model = "deepseek-r1:1.5b"
