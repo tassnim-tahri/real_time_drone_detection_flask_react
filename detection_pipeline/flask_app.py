@@ -122,7 +122,7 @@ def analyze_video():
         
         global chain_list
         global reportText_list
-        result,chain = run_full_pipeline(input_path,conf,top_K,"groq","cosmos","REMOVED")
+        result,chain = run_full_pipeline(input_path,conf,top_K,"groq","cosmos",os.getenv("HF_KEY"))
         chain_list[user_id] = chain
         reportText = result["raw_report"]
         reportText_list[user_id] = reportText
