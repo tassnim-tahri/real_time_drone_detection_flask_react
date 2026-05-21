@@ -9,14 +9,13 @@ from werkzeug.utils import secure_filename
 from app import run_full_pipeline
 import uuid
 import traceback
+import json
 
 # =============================
 # INIT APP
 # =============================
-from settings_routes import settings_bp
 
 app = Flask(__name__)
-app.register_blueprint(settings_bp) 
 CORS(app)
 
 UPLOAD_FOLDER = "uploads"
@@ -25,6 +24,8 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 # Load YOLO model once
 model = YOLO("model.pt")
 
+chain_list={}
+reportText_list={}
 chain = None
 reportText=None
 
@@ -37,69 +38,6 @@ def save_file(file):
 @app.route("/health", methods=["GET"])
 def health():
     return jsonify({"status": "ok", "service": "AI running"})
-
-@app.route("/detect", methods=["POST"])
-def detect():
-    if "file" not in request.files:
-        return jsonify({"error": "No file uploaded"}), 400
-
-    file = request.files["file"]
-    filepath = save_file(file)
-
-    try:
-        results = model(filepath)
-
-        detections = []
-
-        for result in results:
-            for box in result.boxes:
-                cls = int(box.cls[0])
-                name = model.names[cls]
-
-                x1, y1, x2, y2 = box.xyxy[0].tolist()
-
-                detections.append({
-                    "label": name,
-                    "confidence": float(box.conf[0]),
-                    "bbox": {
-                        "x": x1,
-                        "y": y1,
-                        "width": x2 - x1,
-                        "height": y2 - y1
-                    }
-                })
-
-        return jsonify({
-            "success": True,
-            "detections": detections,
-            "count": len(detections)
-        })
-
-    except Exception as e:
-        return jsonify({
-            "error": "Detection failed",
-            "details": str(e)
-        }), 500
-
-@app.route("/analyze", methods=["POST"])
-def analyze():
-    """
-    Placeholder for:
-    - Drone threat analysis (VLM)
-    - Report generation (LLM)
-    """
-
-    data = request.json
-
-    # Example structure expected from frontend later
-    detections = data.get("detections", [])
-
-    # Dummy response (replace later)
-    return jsonify({
-        "summary": "No threat detected",
-        "risk_level": "low",
-        "details": f"{len(detections)} objects analyzed"
-    })
 
 import subprocess
 
@@ -167,22 +105,27 @@ def analyze_video():
         return jsonify({"success": False, "error": "No top_K sent"}), 400
     if "llmProvider" not in request.form:
         return jsonify({"success": False, "error": "No LLM provider sent"}), 400
-
+    if "user_id" not in request.form:
+        return jsonify({"success": False, "error": "No User ID sent"}), 400
+    
     video = request.files["file"]
     conf = float(request.form["conf"])
     top_K = int(request.form["top_K"])
     llmProvider = str(request.form["llmProvider"])
+    user_id= str(request.form["user_id"])
+    print(user_id)
     filename = secure_filename(video.filename)
     input_path = os.path.join("uploads", filename)
     video.save(input_path)
 
     try:
         
-        global chain
-        global reportText
-        result,chain = run_full_pipeline(input_path,conf,top_K,llmProvider)
+        global chain_list
+        global reportText_list
+        result,chain = run_full_pipeline(input_path,conf,top_K,"groq","cosmos","REMOVED")
+        chain_list[user_id] = chain
         reportText = result["raw_report"]
-        
+        reportText_list[user_id] = reportText
         return jsonify({
             "success": True,
             "report_path": result["report_path"],
@@ -196,24 +139,41 @@ def analyze_video():
         traceback.print_exc()
         return jsonify({"success": False, "error": f"Pipeline failed: {str(e)}"}), 500
 
+@app.route("/getlists" , methods=["GET"])
+def getlists():
+     return jsonify({
+        "report": reportText_list,
+        "chain_types": [
+            str(type(c)) for c in chain_list
+        ]
+    })
+
 @app.route("/chat", methods=["POST"])
 def chat():
     try:
+        
         data = request.json
         user_message = data.get("message", "")
-        
-        global chain , reportText
-        print(chain)
+        user_id = data.get("user_id","")
+        if not user_message or not user_id : 
+            return jsonify({"error": "no user_id or session not initialized"}), 400
+        global chain_list , reportText_list
+        chain = chain_list[user_id]
+        reportText = reportText_list[user_id]
+        if chain is None or reportText is None:
+            return jsonify({"error": "Invalid user_id or session not initialized"}), 400
+        print("chain : ",chain)
         try : 
             response = chain.invoke({
                 "report": reportText,"question": user_message
             })
+            print("chain : ",chain)
             return jsonify({
                 "response": response
             })
         except Exception as exc:
-            print(f"Assistant: Could not answer with LangChain provider: {exc}\n")
-            return jsonify({"response" : f"Assistant: Could not answer with LangChain provider: {exc}\n"})
+            print(f"Assistant: Could not answer with LangChain provider  yayyy: {exc}\n")
+            return jsonify({"response" : f"Assistant: Could not answer with LangChain provider: {exc}\n "})
 
     except Exception as e:
         print("ERROR",str(e))
