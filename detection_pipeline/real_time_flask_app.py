@@ -1,6 +1,7 @@
 from flask import Flask, render_template, Response, request, jsonify
 from flask_cors import CORS
 from ultralytics import YOLO
+from yolo_weights import resolve_yolo_weights
 import cv2
 import threading
 import time
@@ -29,7 +30,7 @@ app = Flask(__name__)
 CORS(app)
 
 # YOLO Model Configuration
-model = YOLO('model.pt')
+model = YOLO(resolve_yolo_weights())
 
 # Camera Configuration
 CAMERA_INDEX = 0

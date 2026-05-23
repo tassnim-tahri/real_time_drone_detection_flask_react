@@ -1,8 +1,6 @@
+# Minimal deps: Flask API + YOLO + live MJPEG (no LangChain unless you install requirements-llm.txt)
 ultralytics>=8.3.0
 opencv-python>=4.10.0
-langchain>=0.3.0
-langchain-core>=0.3.0
-langchain-ollama>=0.2.0
-langchain-groq>=0.2.0
-groq>=0.11.0
+flask>=3.0.0
+flask-cors>=4.0.0
 lap>=0.5.12

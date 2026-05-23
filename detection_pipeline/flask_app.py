@@ -1,29 +1,33 @@
-from unittest import result
 from pathlib import Path
+import os
+import re
+import traceback
+import uuid
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from ultralytics import YOLO
-import os
 from werkzeug.utils import secure_filename
-from app import run_full_pipeline
-import uuid
-import traceback
 
 # =============================
 # INIT APP
 # =============================
 from settings_routes import settings_bp
+from yolo_weights import resolve_yolo_weights
+from live_stream import register_streaming_routes
 
 app = Flask(__name__)
-app.register_blueprint(settings_bp) 
+app.register_blueprint(settings_bp)
 CORS(app)
 
 UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# Load YOLO model once
-model = YOLO("model.pt")
+# Load YOLO model once (use YOLO_WEIGHTS_PATH or model.pt / weights — see yolo_weights.py)
+_WEIGHTS = resolve_yolo_weights()
+print(f"[flask_app] Loading YOLO weights: {_WEIGHTS}")
+model = YOLO(_WEIGHTS)
+register_streaming_routes(app, model)
 
 chain = None
 reportText=None
@@ -36,7 +40,25 @@ def save_file(file):
 
 @app.route("/health", methods=["GET"])
 def health():
-    return jsonify({"status": "ok", "service": "AI running"})
+    return jsonify(
+        {
+            "status": "ok",
+            "service": "AI + streaming",
+            "weights": _WEIGHTS,
+            "endpoints": {
+                "detect": "/detect",
+                "video_feed": "/video_feed",
+                "stats": "/api/stats",
+                "streaming_demo": "/demo/streaming",
+            },
+        }
+    )
+
+
+@app.route("/demo/streaming")
+def streaming_demo_page():
+    static_dir = Path(__file__).resolve().parent / "static"
+    return send_from_directory(static_dir, "streaming_demo.html")
 
 @app.route("/detect", methods=["POST"])
 def detect():
@@ -101,11 +123,8 @@ def analyze():
         "details": f"{len(detections)} objects analyzed"
     })
 
-import subprocess
-
 OUTPUT_REPORT_PATH = "outputs/final_threat_report.md"
 
-import re
 
 def parse_report(report_text):
     data = {}
@@ -177,7 +196,9 @@ def analyze_video():
     video.save(input_path)
 
     try:
-        
+        # Heavy LangChain / VLM deps — only load when analysis is requested.
+        from app import run_full_pipeline
+
         global chain
         global reportText
         result,chain = run_full_pipeline(input_path,conf,top_K,llmProvider)

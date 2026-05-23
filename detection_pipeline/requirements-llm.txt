@@ -1,0 +1,8 @@
+# Full video threat pipeline + chat (/analyze_video, /chat). Install after requirements.txt:
+#   pip install -r requirements.txt -r requirements-llm.txt
+-r requirements.txt
+langchain-core>=0.3.43,<0.4.0
+langchain-community>=0.3.14,<0.4.0
+langchain-ollama>=0.2.2,<0.3.0
+langchain-groq>=0.2.0,<0.3.0
+groq>=0.11.0
