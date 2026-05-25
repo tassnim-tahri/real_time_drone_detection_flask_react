@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Drone detect — your device camera</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, sans-serif;
+      margin: 0;
+      padding: 16px;
+      max-width: 720px;
+      margin-inline: auto;
+      background: #0f172a;
+      color: #e2e8f0;
+    }
+    h1 { font-size: 1.25rem; margin-top: 0; }
+    p, .note { font-size: 0.9rem; line-height: 1.45; color: #94a3b8; }
+    .note { border-left: 3px solid #6366f1; padding-left: 10px; margin: 12px 0; }
+    .wrap {
+      position: relative;
+      width: 100%;
+      border-radius: 12px;
+      overflow: hidden;
+      background: #020617;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+    .row { margin: 10px 0; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+    label { font-size: 0.875rem; }
+    input[type="number"] { width: 4.5rem; }
+    button {
+      cursor: pointer;
+      padding: 10px 16px;
+      border-radius: 8px;
+      border: none;
+      font-weight: 600;
+      background: #6366f1;
+      color: #fff;
+    }
+    button.secondary { background: #334155; }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
+    select { padding: 8px; border-radius: 8px; border: 1px solid #334155; background: #1e293b; color: #e2e8f0; }
+    #meta { font-size: 0.8rem; color: #64748b; margin-top: 8px; }
+    #meta strong { color: #a5b4fc; }
+    a { color: #818cf8; }
+    pre#error { background: #450a0a; color: #fecaca; padding: 12px; border-radius: 8px; font-size: 0.85rem; display: none; white-space: pre-wrap; word-break: break-word; }
+  </style>
+</head>
+<body>
+  <h1>Live detection — this device’s camera</h1>
+  <p>
+    Frames are captured on <strong>whatever device opened this page</strong> (your phone’s camera when you browse on your phone,
+    laptop webcam when on the laptop). They are sent to the server only for inference; frames are not stored by this demo.
+    <a href="/demo/streaming">Server webcam stream (MJPEG)</a> is unchanged.
+  </p>
+  <p>
+    Phones send each frame to your laptop over Wi‑Fi/TLS — that is inherently slower than the laptop webcam on this page.
+    If it feels sluggish, leave <strong>Infer rate</strong> at <strong>Very slow (~1/sec)</strong> or pick a slower CPU model on the server (env <code>CLIENT_FRAME_IMGSZ=320</code>).
+  </p>
+  <p class="note">
+    <strong>Laptop works but phone says «This site can't be reached / took too long»?</strong><br/>
+    Almost always <strong>Windows Firewall</strong> blocking inbound TCP 8000, or Wi‑Fi <strong>AP / client isolation</strong> on the router.
+    On the Flask PC run <code>scripts/allow_firewall_port.ps1</code> as Administrator. Use the laptop’s <strong>IPv4 address</strong> (from <code>ipconfig</code>), not <code>localhost</code>. Phone and laptop must be on the <strong>same network</strong> (avoid guest Wi‑Fi).<br/>
+    <strong>HTTPS + camera:</strong> plain <code>http://192.168.x.x</code> usually disables <code>getUserMedia</code>. Use <code>FLASK_DEV_HTTPS=1</code> then <code>https://&lt;laptop‑IP&gt;:8000/...</code> and trust the certificate.<br/>
+    This session: protocol <code id="prot">—</code> · secure context <strong id="secctx">—</strong>
+  </p>
+
+  <div class="row">
+    <button type="button" id="start">Start camera</button>
+    <button type="button" id="stop" disabled>Stop</button>
+    <label>Camera:
+      <select id="facing">
+        <option value="environment">Back (environment)</option>
+        <option value="user">Front (user)</option>
+      </select>
+    </label>
+    <label>Confidence
+      <input id="thr" type="number" step="0.05" min="0" max="1" value="0.35" title="YOLO threshold for this POST" />
+    </label>
+    <label>Infer rate
+      <select id="interval" title="Slower intervals help phones on Wi‑Fi">
+        <option value="166">Fast ~6/sec (same Wi‑Fi, laptop)</option>
+        <option value="250">~4/sec</option>
+        <option value="400">Balanced ~2.5/sec</option>
+        <option value="500" selected>Slow ~2/sec (recommended phone)</option>
+        <option value="800">Very slow ~1/sec (weak Wi‑Fi)</option>
+      </select>
+    </label>
+  </div>
+
+  <div class="wrap">
+    <canvas id="out"></canvas>
+  </div>
+  <p id="meta">Status: idle</p>
+  <pre id="error"></pre>
+
+  <!-- Hidden scratch canvas for JPEG encode; video captures device feed -->
+  <video id="v" muted playsInline autoplay style="display:none;"></video>
+
+  <script>
+    const v = document.getElementById("v");
+    const canvas = document.getElementById("out");
+    const ctx = canvas.getContext("2d");
+    const meta = document.getElementById("meta");
+    const errBox = document.getElementById("error");
+
+    let stream = null;
+    let timer = null;
+    let busy = false;
+    let consecutiveInferFails = 0;
+
+    function legacyGetUserMedia(constraints) {
+      const gum =
+        navigator.getUserMedia ||
+        navigator.webkitGetUserMedia ||
+        navigator.mozGetUserMedia ||
+        navigator.msGetUserMedia;
+      if (!gum) {
+        return Promise.reject(new Error("no legacy getUserMedia"));
+      }
+      return new Promise((resolve, reject) =>
+        gum.call(navigator, constraints, resolve, reject)
+      );
+    }
+
+    window.addEventListener("DOMContentLoaded", function () {
+      try {
+        const pe = document.getElementById("prot");
+        const se = document.getElementById("secctx");
+        if (pe) pe.textContent = location.protocol || "";
+        if (se)
+          se.textContent =
+            window.isSecureContext === true
+              ? "yes"
+              : window.isSecureContext === false
+                ? "no (use HTTPS on phone)"
+                : "unknown";
+        /* Default gentler pacing on phones — large JPEG uploads + server YOLO are heavy on Wi‑Fi */
+        var iv = document.getElementById("interval");
+        if (iv && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || ""))
+          iv.value = "800";
+      } catch (_) {}
+    });
+
+    function showErr(msg) {
+      errBox.style.display = "block";
+      errBox.textContent = msg;
+      meta.innerHTML = "Status: error";
+    }
+    function hideErr() {
+      errBox.style.display = "none";
+      errBox.textContent = "";
+    }
+
+    document.getElementById("stop").onclick = async () => {
+      if (timer) {
+        clearInterval(timer);
+        timer = null;
+      }
+      busy = false;
+      consecutiveInferFails = 0;
+      if (stream) {
+        stream.getTracks().forEach((t) => t.stop());
+        stream = null;
+      }
+      v.srcObject = null;
+      document.getElementById("start").disabled = false;
+      document.getElementById("stop").disabled = true;
+      hideErr();
+      meta.textContent = "Status: stopped";
+    };
+
+    document.getElementById("start").onclick = async () => {
+      hideErr();
+      const facingMode = document.getElementById("facing").value;
+      meta.textContent = "Status: opening camera…";
+
+      const md = navigator.mediaDevices;
+      const mdGum =
+        md && typeof md.getUserMedia === "function"
+          ? md.getUserMedia.bind(md)
+          : null;
+
+      try {
+        if (stream) {
+          stream.getTracks().forEach((t) => t.stop());
+        }
+        if (mdGum) {
+          try {
+            stream = await mdGum({
+              video: { facingMode: { ideal: facingMode } },
+              audio: false,
+            });
+          } catch (eIde) {
+            stream = await mdGum({ video: true, audio: false });
+          }
+        } else {
+          try {
+            stream = await legacyGetUserMedia({
+              video: { facingMode },
+              audio: false,
+            });
+          } catch (eLegacy) {
+            stream = await legacyGetUserMedia({
+              video: true,
+              audio: false,
+            });
+          }
+        }
+        v.srcObject = stream;
+        await v.play();
+      } catch (e) {
+        const ename = e && e.name ? String(e.name) : "";
+        const httpsHint =
+          location.protocol !== "https:" &&
+          location.hostname !== "localhost" &&
+          location.hostname !== "127.0.0.1"
+            ? "Many phones hide the camera API on plain HTTP unless you open the page over HTTPS or localhost.\n\nUse HTTPS with FLASK_DEV_HTTPS=1, ngrok/cloudflared, or localhost on each device.\n\n"
+            : "";
+        const permitHint =
+          ename === "NotAllowedError" ||
+          /permission|denied|dismissed/i.test(String((e && e.message) || ""))
+            ? "The browser refused camera access. Tap Start again and choose «Allow». If you tapped «Block» or dismissed the prompt, open the site lock icon → Permissions → allow Camera.\n\n"
+            : "";
+        showErr(permitHint + httpsHint + String((e && e.message) || e));
+        meta.textContent = "Status: camera blocked";
+        return;
+      }
+
+      document.getElementById("start").disabled = true;
+      document.getElementById("stop").disabled = false;
+
+      const intervalMs = parseInt(document.getElementById("interval").value, 10);
+      consecutiveInferFails = 0;
+
+      async function captureAndInfer() {
+        if (busy || !v.videoWidth || !v.videoHeight) return;
+        busy = true;
+        try {
+          const ua = navigator.userAgent || "";
+          const coarseMobile = /Android|iPhone|iPad|iPod/i.test(ua);
+          const thr =
+            parseFloat(document.getElementById("thr")?.value ?? "0.35") || 0.35;
+          const maxW = coarseMobile ? 320 : 544;
+          const jpegQ = coarseMobile ? 0.68 : 0.8;
+          const vw = v.videoWidth;
+          const vh = v.videoHeight;
+          const scale = Math.min(1, maxW / vw);
+          const cw = Math.round(vw * scale);
+          const ch = Math.round(vh * scale);
+
+          canvas.width = cw;
+          canvas.height = ch;
+          ctx.drawImage(v, 0, 0, cw, ch);
+
+          const blob = await new Promise((resolve) =>
+            canvas.toBlob((b) => resolve(b), "image/jpeg", jpegQ)
+          );
+          if (!blob) return;
+
+          const fd = new FormData();
+          fd.append("frame", blob, "frame.jpg");
+          fd.append("conf", String(thr));
+
+          /* Wi‑Fi + TLS + multipart can exceed a few seconds on phones — avoid flaky default timeouts */
+          var ctrl = new AbortController();
+          var to = setTimeout(function () {
+            ctrl.abort();
+          }, 55000);
+
+          let r;
+          try {
+            r = await fetch("/api/client_frame", {
+              method: "POST",
+              body: fd,
+              signal: ctrl.signal,
+              keepalive: true,
+            });
+          } finally {
+            clearTimeout(to);
+          }
+
+          const j = await r.json().catch(function () {
+            return {};
+          });
+          if (!r.ok || !j.success) {
+            throw new Error(j.error || r.statusText || "bad response");
+          }
+
+          consecutiveInferFails = 0;
+          errBox.style.display = "none";
+
+          ctx.drawImage(v, 0, 0, cw, ch);
+          ctx.lineWidth = 2;
+          ctx.font = `${Math.max(14, cw / 40)}px system-ui,sans-serif`;
+          const list = j.detections || [];
+          for (const d of list) {
+            const bb = d.bbox;
+            if (!bb) continue;
+            const { x, y, width, height } = bb;
+            ctx.strokeStyle = "#22c55e";
+            ctx.fillStyle = "#22c55e";
+            ctx.strokeRect(x, y, width, height);
+            const text = `${d.label} ${(d.confidence * 100).toFixed(0)}%`;
+            ctx.fillText(text, x, Math.max(16, y - 4));
+          }
+          meta.innerHTML = `Live · infer <strong>${list.length}</strong> · ${cw}×${ch} jpeg · next in ${intervalMs}ms`;
+        } catch (e) {
+          consecutiveInferFails++;
+          var em = String((e && e.message) || e);
+          meta.textContent =
+            "Infer issue (" +
+            consecutiveInferFails +
+            "): " +
+            em +
+            " — slowing down reduces load.";
+          /* One slow frame should not wipe the UX; escalate after streak */
+          if (consecutiveInferFails >= 12) showErr(em);
+        } finally {
+          busy = false;
+        }
+      }
+
+      if (timer) clearInterval(timer);
+      timer = setInterval(captureAndInfer, intervalMs);
+      captureAndInfer();
+    };
+  </script>
+</body>
+</html>
