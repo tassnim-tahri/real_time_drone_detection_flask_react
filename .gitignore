@@ -12,8 +12,12 @@ node_modules/
 build/
 dist/
 
-# Outputs
+# Outputs / uploads (do not commit user media or temp API files)
 outputs/
+uploads/
+backend/uploads/
+analysis_uploads/
+
 *.mp4
 *.jpg
 *.png

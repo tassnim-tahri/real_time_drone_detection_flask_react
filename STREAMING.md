@@ -2,15 +2,13 @@
 
 ## What exists now
 
-1. **`flask_app.py` (port 8000)**  
-   Unified API: `/detect`, `/analyze_video`, `/chat`, **`/video_feed` (MJPEG)**, **`/api/stats`**, **`/api/set_confidence`**, **`/demo/streaming`**.  
-   **Device camera:** **`/demo/client-camera`** captures with `getUserMedia` on whoever opened the page (phone ↔ phone camera); frames are **`POST`**ed as JPEG to **`/api/client_frame`** for YOLO (not MJPEG/WebRTC).
+1. **`flask_app.py` (port 8000)** — **only supported API process** for HTTP: `/detect`, `/analyze_video`, `/chat`, **`/video_feed` (MJPEG)**, **`/api/stats`**, **`/api/set_confidence`**, **`/demo/streaming`**, **`/demo/client-camera`**, **`POST /api/client_frame`**, **`/api/analysis/*`** (optional **background YOLO-only** scan with progress polling).  
+   **Device camera:** **`/demo/client-camera`** uses `getUserMedia`; frames are **`POST`**ed as JPEG to **`/api/client_frame`** (not MJPEG/WebRTC).
 
-2. **`real_time_flask_app.py` (port 8001)**  
-   Alternate app with streaming + richer analysis-status APIs.
+2. **`live_stream.py`**  
+   Shared MJPEG generator and streaming routes; registered from `flask_app.py` via `register_streaming_routes`.
 
-3. **`live_stream.py`**  
-   Shared MJPEG generator and routes (registered inside `flask_app.py`).
+Older duplicate Flask servers were removed so one app owns everything — recover them from **`git history`** only if needed.
 
 ## Roadmap — next refinement steps
 

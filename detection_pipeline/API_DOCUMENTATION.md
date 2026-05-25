@@ -1,63 +1,73 @@
-```markdown
-# Unified Real-Time Detection & Analysis Backend API
+# HTTP API — drone detection stack
 
-## Overview
+**Supported server:** run `flask_app.py` (default **port 8000**). All routes below are relative to `http://127.0.0.1:8000` unless noted.
 
-This backend integrates:
-- **Real-time YOLO detection** via streaming camera feed
-- **Video file analysis** with VLM threat assessment
-- **LLM-powered reporting** and chatbot
-- **RESTful API** for frontend communication
+For **how to run**, HTTPS on phones, firewall, and demos, see **`../STREAMING.md`**.
 
 ---
 
-## Architecture
+## Health
 
-### Components
-
-┌─────────────────┐ │ Live Camera │ └────────┬────────┘ │ ┌────▼─────────┐ ┌──────────────────┐ │ YOLO RT │◄────────│ Confidence │ │ Detection │ │ Threshold │ └────┬─────────┘ └──────────────────┘ │ ┌────▼──────────────┐ │ Video Stream │ │ (MJPEG) │ └────────────────────┘
-
-┌─────────────────┐ │ Video Upload │ └────────┬────────┘ │ ┌────▼─────────────────┐ │ YOLO Inference │ │ + Tracking │ └────┬─────────────────┘ │ ┌────▼──────────────┐ │ Crop Extraction │ └────┬──────────────┘ │ ┌────▼──────────────┐ │ VLM Analysis │ │ (Groq) │ └────┬──────────────┘ │ ┌────▼──────────────┐ │ LLM Report Gen │ │ (Groq) │ └────┬──────────────┘ │ ┌────▼──────────────┐ │ Final Report │ │ + Chat Ready │ └────────────────────┘
-
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/health` | Service status, weights path, endpoint list (JSON). |
 
 ---
 
-## API Endpoints
+## Detection & analysis
 
-### Streaming & Real-Time Detection
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/detect` | Upload **file** → YOLO JSON (existing behavior). |
+| POST | `/analyze` | Analysis route (see `flask_app.py` for form fields). |
+| POST | `/analyze_video` | Full video pipeline (LangChain/VLM when installed; see `requirements-llm.txt`). |
+| POST | `/chat` | Chat against prior report context. |
 
-#### `GET /video_feed`
-Live MJPEG video stream with real-time detections
+### Background video scan (YOLO only — poll progress)
 
-**Response:**
-- MJPEG stream with bounding boxes and annotations
+Separate from **`/analyze_video`**: frame-by-frame YOLO only, runs in a **background thread**.
 
-**Example:**
-```html
-<img src="http://localhost:8001/video_feed" />
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/analysis/upload` | Multipart **`file`**; optional form **`confidence`** or **`conf`** (0–1, default `0.25`). Saves under **`analysis_uploads/`** and starts the worker. |
+| GET | `/api/analysis/status` | `status`: `idle` \| `analyzing` \| `completed` \| `error`, plus frame counts and FPS. |
+| GET | `/api/analysis/report` | Full JSON stats + top detection events (**only after** `completed`). |
+| GET | `/api/analysis/summary` | Short human-readable summary + stats (**only after** `completed`). |
+| POST | `/api/analysis/reset` | Clears analysis state back to **`idle`** (does not cancel an in-flight thread). |
 
 
+## Live streaming (MJPEG + stats)
 
+Provided by `live_stream.register_streaming_routes`:
 
-
-# Real-Time Detection & Analysis Backend
-
-## 📋 Overview
-
-`real_time_flask_app.py` is a unified Flask backend that provides:
-
-✅ **Live camera streaming** with real-time YOLO detection  
-✅ **Video file analysis** with background processing  
-✅ **Dual dashboard support** - streaming + analysis tabs  
-✅ **Confidence threshold control** (live adjustment)  
-✅ **Non-blocking analysis** (async video processing)  
-✅ **Statistics tracking** (FPS, detections, classes)  
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/video_feed` | MJPEG stream with overlays. |
+| POST | `/api/stream/start` | Start/streaming flag helpers. |
+| POST | `/api/stream/stop` | Stop/streaming helpers. |
+| GET | `/api/stats` | FPS, counts, thresholds (JSON). |
+| POST | `/api/set_confidence` | Adjust threshold (JSON body `threshold`). |
+| POST | `/api/reset_session` | Reset streamed session counters. |
 
 ---
 
-## 🚀 Quick Start
+## Browser demos
 
-### 1. Installation
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/demo/streaming` | Server webcam MJPEG page. |
+| GET | `/demo/client-camera` | Device camera → `POST /api/client_frame`. |
 
-```bash
-pip install flask flask-cors ultralytics opencv-python torch
+---
+
+## Device camera inference
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/client_frame` | Multipart **`frame`** (JPEG), optional **`conf`**; returns **`detections`** JSON. |
+
+---
+
+## Settings blueprint
+
+Mounted at **`/api/settings/*`** (`settings_routes.py`). Inspect that module for CRUD endpoints.

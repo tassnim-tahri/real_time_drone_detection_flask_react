@@ -1,7 +1,7 @@
 """
 Live camera MJPEG streaming with YOLO overlays.
 
-Used by flask_app (port 8000) and can be reused by real_time_flask_app.
+Registers MJPEG and streaming stats routes on whichever Flask app calls ``register_streaming_routes`` (normally ``flask_app.py`` on port 8000).
 """
 from __future__ import annotations
 
